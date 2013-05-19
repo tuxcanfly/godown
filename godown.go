@@ -33,7 +33,7 @@ func download(uri string, chunks chan int, offset int, file *os.File) {
 func main() {
 
     download_url := flag.String("url", "", "URL to download")
-    threads := flag.Int("threads", 5, "Number of threads")
+    threads := flag.Int("threads", 3, "Number of threads")
     flag.Parse()
 
     if len(*download_url) == 0 {
