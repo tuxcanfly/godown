@@ -42,6 +42,11 @@ func main() {
     threads := flag.Int("threads", 5, "Number of threads")
     flag.Parse()
 
+    if len(*download_url) == 0 {
+        fmt.Println("No --url provided")
+        os.Exit(1)
+    }
+
     parsed_url, _ := url.Parse(*download_url)
     filename := path.Base(parsed_url.Path)
 
