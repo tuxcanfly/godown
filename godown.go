@@ -9,8 +9,8 @@ import "net/url"
 import "net/http"
 import "io/ioutil"
 
-func download(uri string, c chan int, offset int, out chan []byte) {
-    for current := range c {
+func download(uri string, chunks chan int, offset int, file *os.File) {
+    for current := range chunks {
 
         fmt.Println("Downloading range: ", current, "-", current+offset)
 
@@ -26,13 +26,7 @@ func download(uri string, c chan int, offset int, out chan []byte) {
         if err != nil {
             panic(err)
         }
-        out <- body
-    }
-}
-
-func write(out chan []byte, f *os.File) {
-    for b := range out {
-        f.Write(b)
+        file.Write(body)
     }
 }
 
@@ -50,11 +44,10 @@ func main() {
     parsed_url, _ := url.Parse(*download_url)
     filename := path.Base(parsed_url.Path)
 
-    f, err := os.Create(filename)
+    file, err := os.Create(filename)
     if err != nil {
         panic(err)
     }
-    out := make(chan []byte)
 
     resp, err := http.Head(*download_url)
     if err != nil {
@@ -66,13 +59,12 @@ func main() {
     offset := content_length / *threads
     current := 0
 
-    c := make(chan int)
+    chunks := make(chan int)
 
-    go download(*download_url, c, offset, out)
-    go write(out, f)
+    go download(*download_url, chunks, offset, file)
 
     for _ = range make([]int, *threads) {
-        c <- current
+        chunks <- current
         current += offset
     }
     fmt.Println("Download complete - saved to", filename)
