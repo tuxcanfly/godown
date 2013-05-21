@@ -15,7 +15,7 @@ func download(uri string, start int, offset int, chunks chan []byte) {
 
     client := &http.Client{}
     req, _ := http.NewRequest("GET", uri, nil)
-    req.Header.Set("Range: ", fmt.Sprintf("bytes=%d-%d", start, start+offset))
+    req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, start+offset))
     resp, err := client.Do(req)
     if err == io.EOF {
         return
@@ -62,7 +62,7 @@ func main() {
     for _ = range make([]int, *threads) {
         go download(*download_url, start, offset, chunks)
         start += offset
+        file.Write(<-chunks)
     }
-    file.Write(<-chunks)
     fmt.Println("Download complete - saved to", filename)
 }
