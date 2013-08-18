@@ -1,32 +1,16 @@
 package main
 
 import "io"
+import "bufio"
 import "os"
 import "fmt"
-import "path"
 import "strconv"
 import "flag"
+import "path"
+import "sync"
 import "net/url"
 import "net/http"
 import "io/ioutil"
-
-func download(uri string, start int, offset int, chunks chan []byte) {
-    fmt.Println("Downloading range: ", start, "-", start+offset)
-
-    client := &http.Client{}
-    req, _ := http.NewRequest("GET", uri, nil)
-    req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, start+offset))
-    resp, err := client.Do(req)
-    if err == io.EOF {
-        return
-    }
-    if err != nil {
-        panic(err)
-    }
-    defer resp.Body.Close()
-    body, err := ioutil.ReadAll(resp.Body)
-    chunks <- body
-}
 
 func main() {
 
@@ -39,14 +23,6 @@ func main() {
         os.Exit(1)
     }
 
-    parsed_url, _ := url.Parse(*download_url)
-    filename := path.Base(parsed_url.Path)
-
-    file, err := os.Create(filename)
-    if err != nil {
-        panic(err)
-    }
-
     resp, err := http.Head(*download_url)
     if err != nil {
         panic(err)
@@ -57,12 +33,72 @@ func main() {
     offset := content_length / *threads
     start := 0
 
-    chunks := make(chan []byte)
+    parsed_url, _ := url.Parse(*download_url)
+    fileName := path.Base(parsed_url.Path)
 
-    for _ = range make([]int, *threads) {
-        go download(*download_url, start, offset, chunks)
+    var wg sync.WaitGroup
+    wg.Add(*threads+1)
+    for i := 0; i <= *threads; i++ {
+        chunkName := fileName + ".part." + strconv.Itoa(i)
+        go getChunk(*download_url, start, offset, chunkName, &wg)
         start += offset
-        file.Write(<-chunks)
+        if (start + offset > content_length) {
+            offset = content_length - start
+        }
     }
-    fmt.Println("Download complete - saved to", filename)
+    wg.Wait()
+    outFile, err := os.Create(fileName)
+    if err != nil {
+        panic(err)
+    }
+    defer outFile.Close()
+    for i := 0; i <= *threads; i++ {
+        chunkName := fileName + ".part." + strconv.Itoa(i)
+        writeChunk(chunkName, outFile)
+    }
+}
+
+func getChunk(uri string, start int, offset int, chunkName string, wg *sync.WaitGroup) {
+    fmt.Println("Downloading range: ", start, "-", start+offset-1)
+
+    client := &http.Client{}
+    req, _ := http.NewRequest("GET", uri, nil)
+    req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, start+offset-1))
+    resp, err := client.Do(req)
+    if err == io.EOF {
+        return
+    }
+    if err != nil {
+        panic(err)
+    }
+    defer resp.Body.Close()
+    body, err := ioutil.ReadAll(resp.Body)
+
+    outFile, err := os.Create(chunkName)
+    if err != nil {
+        panic(err)
+    }
+    defer outFile.Close()
+    outFile.Write(body)
+    wg.Done()
+}
+
+func writeChunk(chunkName string, outFile *os.File) {
+    chunkFile, _  := os.Open(chunkName)
+    defer chunkFile.Close()
+
+    chunkReader := bufio.NewReader(chunkFile)
+    chunkWriter := bufio.NewWriter(outFile)
+
+    buf := make([]byte, 1024)
+    for {
+        n, err := chunkReader.Read(buf)
+        if err != nil && err != io.EOF { panic(err) }
+        if n == 0 { break }
+        if _, err := chunkWriter.Write(buf[:n]); err != nil {
+            panic(err)
+        }
+    }
+    if err := chunkWriter.Flush(); err != nil { panic(err) }
+    os.Remove(chunkName)
 }
