@@ -14,16 +14,16 @@ import "io/ioutil"
 
 func main() {
 
-    download_url := flag.String("url", "", "URL to download")
     threads := flag.Int("threads", 3, "Number of threads")
     flag.Parse()
 
-    if len(*download_url) == 0 {
+    if len(flag.Args()) == 0 {
         fmt.Println("No --url provided")
         os.Exit(1)
     }
+    download_url := flag.Args()[0]
 
-    resp, err := http.Head(*download_url)
+    resp, err := http.Head(download_url)
     if err != nil { panic(err) }
     defer resp.Body.Close()
 
@@ -32,14 +32,14 @@ func main() {
     remainder := content_length % (offset * *threads)
     start := 0
 
-    parsed_url, _ := url.Parse(*download_url)
+    parsed_url, _ := url.Parse(download_url)
     fileName := path.Base(parsed_url.Path)
 
     var wg sync.WaitGroup
     wg.Add(*threads)
     for i := 0; i < *threads; i++ {
         chunkName := fileName + ".part." + strconv.Itoa(i)
-        go getChunk(*download_url, start, offset, chunkName, &wg)
+        go getChunk(download_url, start, offset, chunkName, &wg)
         start += offset
         if (i == *threads-2) {
             offset += remainder
