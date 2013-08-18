@@ -24,35 +24,32 @@ func main() {
     }
 
     resp, err := http.Head(*download_url)
-    if err != nil {
-        panic(err)
-    }
+    if err != nil { panic(err) }
     defer resp.Body.Close()
 
     content_length, _ := strconv.Atoi(resp.Header.Get("Content-Length"))
     offset := content_length / *threads
+    remainder := content_length % (offset * *threads)
     start := 0
 
     parsed_url, _ := url.Parse(*download_url)
     fileName := path.Base(parsed_url.Path)
 
     var wg sync.WaitGroup
-    wg.Add(*threads+1)
-    for i := 0; i <= *threads; i++ {
+    wg.Add(*threads)
+    for i := 0; i < *threads; i++ {
         chunkName := fileName + ".part." + strconv.Itoa(i)
         go getChunk(*download_url, start, offset, chunkName, &wg)
         start += offset
-        if (start + offset > content_length) {
-            offset = content_length - start
+        if (i == *threads-2) {
+            offset += remainder
         }
     }
     wg.Wait()
     outFile, err := os.Create(fileName)
-    if err != nil {
-        panic(err)
-    }
+    if err != nil { panic(err) }
     defer outFile.Close()
-    for i := 0; i <= *threads; i++ {
+    for i := 0; i < *threads; i++ {
         chunkName := fileName + ".part." + strconv.Itoa(i)
         writeChunk(chunkName, outFile)
     }
@@ -65,19 +62,13 @@ func getChunk(uri string, start int, offset int, chunkName string, wg *sync.Wait
     req, _ := http.NewRequest("GET", uri, nil)
     req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, start+offset-1))
     resp, err := client.Do(req)
-    if err == io.EOF {
-        return
-    }
-    if err != nil {
-        panic(err)
-    }
+    if err == io.EOF { return }
+    if err != nil { panic(err) }
     defer resp.Body.Close()
     body, err := ioutil.ReadAll(resp.Body)
 
     outFile, err := os.Create(chunkName)
-    if err != nil {
-        panic(err)
-    }
+    if err != nil { panic(err) }
     defer outFile.Close()
     outFile.Write(body)
     wg.Done()
