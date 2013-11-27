@@ -32,8 +32,20 @@ func main() {
     remainder := content_length % (offset * *threads)
     start := 0
 
+    /* TODO: if the server does not support ranges, use signal connection instead */
+    if resp.Header.Get("Accept-Ranges") == "" {
+        fmt.Println("It does not accept ranges, use signal connection instead")
+        *threads = 1
+        start = 1
+        offset = 1
+    }
+
     parsed_url, _ := url.Parse(download_url)
     fileName := path.Base(parsed_url.Path)
+    /* TODO: path basename might be . or / */
+    if fileName == "." || fileName == "/" {
+        fileName = "default"
+    }
 
     var wg sync.WaitGroup
     wg.Add(*threads)
